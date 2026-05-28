@@ -1,4 +1,4 @@
-// ===== ORDER & CART (with DB) =====
+// ===== ORDER & CART (with API) =====
 const orderModal = document.getElementById('orderModal');
 const modalProduct = document.getElementById('modalProduct');
 const modalClose = document.getElementById('modalClose');
@@ -11,12 +11,23 @@ const cartPanelClose = document.getElementById('cartPanelClose');
 const cartList = document.getElementById('cartList');
 const cartEmpty = document.getElementById('cartEmpty');
 
-// Load existing orders count from DB
-let orderCountNum = KagmaDB.getOrders().length;
-if (orderCountNum > 0) {
-  cartCount.textContent = orderCountNum;
-  cartCount.style.display = 'flex';
+// Load existing orders count from DB asynchronously
+async function updateCartCount() {
+  try {
+    const orders = await KagmaDB.getOrders();
+    if (orders.length > 0) {
+      cartCount.textContent = orders.length;
+      cartCount.style.display = 'flex';
+    } else {
+      cartCount.style.display = 'none';
+    }
+  } catch (err) {
+    console.error('Failed to load cart count:', err);
+  }
 }
+
+// Initial load
+updateCartCount();
 
 function openOrder(productName) {
   modalProduct.textContent = productName;
@@ -36,10 +47,10 @@ function closeOrder() {
 }
 
 // ===== CART PANEL =====
-function openCart() {
-  renderCartList();
+async function openCart() {
   cartPanel.classList.add('open');
   document.body.style.overflow = 'hidden';
+  await renderCartList();
 }
 
 function closeCart() {
@@ -47,22 +58,28 @@ function closeCart() {
   document.body.style.overflow = '';
 }
 
-function renderCartList() {
-  const orders = KagmaDB.getOrders();
-  if (orders.length === 0) {
-    cartEmpty.style.display = 'block';
-    cartList.innerHTML = '';
-  } else {
+async function renderCartList() {
+  try {
+    cartList.innerHTML = '<p style="padding:20px;text-align:center;">Завантаження...</p>';
     cartEmpty.style.display = 'none';
-    cartList.innerHTML = orders.map(o =>
-      `<div class="cart-item">
-        <div class="cart-item__info">
-          <strong>${o.product}</strong>
-          <span>${o.name} · ${o.phone}</span>
-        </div>
-        <span class="cart-item__status">Відправлено</span>
-      </div>`
-    ).join('');
+    const orders = await KagmaDB.getOrders();
+    if (orders.length === 0) {
+      cartEmpty.style.display = 'block';
+      cartList.innerHTML = '';
+    } else {
+      cartEmpty.style.display = 'none';
+      cartList.innerHTML = orders.map(o =>
+        `<div class="cart-item">
+          <div class="cart-item__info">
+            <strong>${o.product}</strong>
+            <span>${o.name} · ${o.phone}</span>
+          </div>
+          <span class="cart-item__status">Відправлено</span>
+        </div>`
+      ).join('');
+    }
+  } catch(err) {
+    cartList.innerHTML = '<p style="padding:20px;text-align:center;color:red;">Помилка завантаження</p>';
   }
 }
 
@@ -77,7 +94,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { closeOrder(); closeCart(); }
 });
 
-orderForm.addEventListener('submit', (e) => {
+orderForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const btn = orderForm.querySelector('button[type="submit"]');
   btn.textContent = 'Надсилаємо...';
@@ -87,15 +104,18 @@ orderForm.addEventListener('submit', (e) => {
   const phone = document.getElementById('oPhone').value;
   const comment = document.getElementById('oComment') ? document.getElementById('oComment').value : '';
 
-  setTimeout(() => {
-    // Save to DB
-    KagmaDB.addOrder({ product, name, phone, comment });
-
+  try {
+    await KagmaDB.addOrder({ product, name, phone, comment });
+    
     orderForm.style.display = 'none';
     orderSuccess.style.display = 'block';
-    orderCountNum = KagmaDB.getOrders().length;
-    cartCount.textContent = orderCountNum;
-    cartCount.style.display = 'flex';
+    
+    await updateCartCount();
+    
     setTimeout(closeOrder, 2500);
-  }, 800);
+  } catch(err) {
+    console.error('Failed to submit order:', err);
+    btn.textContent = 'Помилка. Спробуйте ще';
+    btn.disabled = false;
+  }
 });

@@ -72,30 +72,40 @@ fadeTargets.forEach((el, i) => {
   fadeObserver.observe(el);
 });
 
-// ===== CONTACT FORM (saves to DB) =====
+// ===== CONTACT FORM (saves to DB API) =====
 const form = document.getElementById('contactForm');
-form.addEventListener('submit', (e) => {
+form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const btn = form.querySelector('button[type="submit"]');
   const original = btn.textContent;
-
-  // Save to DB
-  KagmaDB.addContact({
-    name: document.getElementById('name').value,
-    email: document.getElementById('email').value,
-    phone: document.getElementById('phone').value,
-    message: document.getElementById('message').value
-  });
-
-  btn.textContent = 'Повідомлення надіслано!';
-  btn.style.background = '#27AE60';
+  btn.textContent = 'Надсилаємо...';
   btn.disabled = true;
-  setTimeout(() => {
-    btn.textContent = original;
-    btn.style.background = '';
-    btn.disabled = false;
-    form.reset();
-  }, 3500);
+
+  try {
+    // Save to DB
+    await KagmaDB.addContact({
+      name: document.getElementById('name').value,
+      email: document.getElementById('email').value,
+      phone: document.getElementById('phone').value,
+      message: document.getElementById('message').value
+    });
+
+    btn.textContent = 'Повідомлення надіслано!';
+    btn.style.background = '#27AE60';
+    setTimeout(() => {
+      btn.textContent = original;
+      btn.style.background = '';
+      btn.disabled = false;
+      form.reset();
+    }, 3500);
+  } catch (err) {
+    console.error(err);
+    btn.textContent = 'Помилка';
+    setTimeout(() => {
+      btn.textContent = original;
+      btn.disabled = false;
+    }, 2000);
+  }
 });
 
 // ===== SMOOTH ACTIVE NAV =====

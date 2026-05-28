@@ -1,4 +1,4 @@
-// ===== ADMIN PANEL LOGIC =====
+// ===== ADMIN PANEL LOGIC (API version) =====
 
 // ===== TAB NAVIGATION =====
 document.querySelectorAll('.sidebar__link[data-tab]').forEach(btn => {
@@ -11,102 +11,121 @@ document.querySelectorAll('.sidebar__link[data-tab]').forEach(btn => {
   });
 });
 
-function refreshCurrentTab(tab) {
-  if (tab === 'dashboard') renderDashboard();
-  if (tab === 'products')  renderProducts();
-  if (tab === 'orders')    renderOrders();
-  if (tab === 'contacts')  renderContacts();
+async function refreshCurrentTab(tab) {
+  if (tab === 'dashboard') await renderDashboard();
+  if (tab === 'products')  await renderProducts();
+  if (tab === 'orders')    await renderOrders();
+  if (tab === 'contacts')  await renderContacts();
 }
 
 // ===== DASHBOARD =====
-function renderDashboard() {
-  const s = KagmaDB.getStats();
-  document.getElementById('statProducts').textContent = s.totalProducts;
-  document.getElementById('statOrders').textContent = s.totalOrders;
-  document.getElementById('statNewOrders').textContent = s.newOrders;
-  document.getElementById('statUnread').textContent = s.unreadContacts;
-  updateBadges(s);
+async function renderDashboard() {
+  try {
+    const s = await KagmaDB.getStats();
+    document.getElementById('statProducts').textContent = s.totalProducts;
+    document.getElementById('statOrders').textContent = s.totalOrders;
+    document.getElementById('statNewOrders').textContent = s.newOrders;
+    document.getElementById('statUnread').textContent = s.unreadContacts;
+    updateBadges(s);
 
-  const orders = KagmaDB.getOrders().slice(0, 5);
-  const tbody = document.getElementById('dashRecentOrders');
-  if (orders.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--admin-muted);padding:40px">Замовлень поки немає</td></tr>';
-  } else {
-    tbody.innerHTML = orders.map(o => `<tr>
-      <td>${esc(o.name)}</td>
-      <td>${esc(o.product)}</td>
-      <td>${esc(o.phone)}</td>
-      <td><span class="status status--${o.status}">${statusLabel(o.status)}</span></td>
-      <td>${fmtDate(o.created_at)}</td>
-    </tr>`).join('');
+    const orders = await KagmaDB.getOrders();
+    const topOrders = orders.slice(0, 5);
+    const tbody = document.getElementById('dashRecentOrders');
+    if (topOrders.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--admin-muted);padding:40px">Замовлень поки немає</td></tr>';
+    } else {
+      tbody.innerHTML = topOrders.map(o => `<tr>
+        <td>${esc(o.name)}</td>
+        <td>${esc(o.product)}</td>
+        <td>${esc(o.phone)}</td>
+        <td><span class="status status--${o.status}">${statusLabel(o.status)}</span></td>
+        <td>${fmtDate(o.created_at)}</td>
+      </tr>`).join('');
+    }
+  } catch(err) {
+    console.error(err);
   }
 }
 
 // ===== PRODUCTS =====
-function renderProducts() {
-  const products = KagmaDB.getProducts();
-  const tbody = document.getElementById('productsTableBody');
-  if (products.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--admin-muted);padding:40px">Немає продуктів</td></tr>';
-    return;
+let allProductsCache = [];
+async function renderProducts() {
+  try {
+    const products = await KagmaDB.getProducts();
+    allProductsCache = products; // Save for modal edit
+    const tbody = document.getElementById('productsTableBody');
+    if (products.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--admin-muted);padding:40px">Немає продуктів</td></tr>';
+      return;
+    }
+    tbody.innerHTML = products.map(p => `<tr>
+      <td><strong>${esc(p.name)}</strong><br><small style="color:var(--admin-muted)">${esc(p.desc).slice(0, 60)}...</small></td>
+      <td>${esc(p.cat)}</td>
+      <td>${(p.variants || []).join(', ')}</td>
+      <td>${p.badge ? `<span class="status status--new">${esc(p.badge)}</span>` : '—'}</td>
+      <td>
+        <button class="admin-btn admin-btn--ghost admin-btn--sm" onclick="editProduct('${p.id}')">Редагувати</button>
+        <button class="admin-btn admin-btn--danger admin-btn--sm" onclick="deleteProduct('${p.id}')">Видалити</button>
+      </td>
+    </tr>`).join('');
+  } catch(err) {
+    console.error(err);
   }
-  tbody.innerHTML = products.map(p => `<tr>
-    <td><strong>${esc(p.name)}</strong><br><small style="color:var(--admin-muted)">${esc(p.desc).slice(0, 60)}...</small></td>
-    <td>${esc(p.cat)}</td>
-    <td>${(p.variants || []).join(', ')}</td>
-    <td>${p.badge ? `<span class="status status--new">${esc(p.badge)}</span>` : '—'}</td>
-    <td>
-      <button class="admin-btn admin-btn--ghost admin-btn--sm" onclick="editProduct('${p.id}')">Редагувати</button>
-      <button class="admin-btn admin-btn--danger admin-btn--sm" onclick="deleteProduct('${p.id}')">Видалити</button>
-    </td>
-  </tr>`).join('');
 }
 
 // ===== ORDERS =====
-function renderOrders() {
-  const orders = KagmaDB.getOrders();
-  const tbody = document.getElementById('ordersTableBody');
-  if (orders.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--admin-muted);padding:40px">Замовлень поки немає</td></tr>';
-    return;
+async function renderOrders() {
+  try {
+    const orders = await KagmaDB.getOrders();
+    const tbody = document.getElementById('ordersTableBody');
+    if (orders.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--admin-muted);padding:40px">Замовлень поки немає</td></tr>';
+      return;
+    }
+    tbody.innerHTML = orders.map(o => `<tr>
+      <td><strong>${esc(o.name)}</strong></td>
+      <td>${esc(o.product)}</td>
+      <td>${esc(o.phone)}</td>
+      <td>${esc(o.comment || '—')}</td>
+      <td>
+        <select onchange="changeOrderStatus('${o.id}', this.value)" style="background:var(--admin-bg);color:var(--admin-text);border:1px solid var(--admin-border);border-radius:6px;padding:4px 8px;font-size:12px">
+          <option value="new" ${o.status==='new'?'selected':''}>Новий</option>
+          <option value="processing" ${o.status==='processing'?'selected':''}>В обробці</option>
+          <option value="done" ${o.status==='done'?'selected':''}>Виконано</option>
+        </select>
+      </td>
+      <td>${fmtDate(o.created_at)}</td>
+      <td><button class="admin-btn admin-btn--danger admin-btn--sm" onclick="deleteOrderAdmin('${o.id}')">Видалити</button></td>
+    </tr>`).join('');
+  } catch(err) {
+    console.error(err);
   }
-  tbody.innerHTML = orders.map(o => `<tr>
-    <td><strong>${esc(o.name)}</strong></td>
-    <td>${esc(o.product)}</td>
-    <td>${esc(o.phone)}</td>
-    <td>${esc(o.comment || '—')}</td>
-    <td>
-      <select onchange="changeOrderStatus('${o.id}', this.value)" style="background:var(--admin-bg);color:var(--admin-text);border:1px solid var(--admin-border);border-radius:6px;padding:4px 8px;font-size:12px">
-        <option value="new" ${o.status==='new'?'selected':''}>Новий</option>
-        <option value="processing" ${o.status==='processing'?'selected':''}>В обробці</option>
-        <option value="done" ${o.status==='done'?'selected':''}>Виконано</option>
-      </select>
-    </td>
-    <td>${fmtDate(o.created_at)}</td>
-    <td><button class="admin-btn admin-btn--danger admin-btn--sm" onclick="deleteOrderAdmin('${o.id}')">Видалити</button></td>
-  </tr>`).join('');
 }
 
 // ===== CONTACTS =====
-function renderContacts() {
-  const contacts = KagmaDB.getContacts();
-  const tbody = document.getElementById('contactsTableBody');
-  if (contacts.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--admin-muted);padding:40px">Звернень поки немає</td></tr>';
-    return;
+async function renderContacts() {
+  try {
+    const contacts = await KagmaDB.getContacts();
+    const tbody = document.getElementById('contactsTableBody');
+    if (contacts.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--admin-muted);padding:40px">Звернень поки немає</td></tr>';
+      return;
+    }
+    tbody.innerHTML = contacts.map(c => `<tr style="${!c.read ? 'background:rgba(231,76,60,0.03)' : ''}">
+      <td><strong>${esc(c.name)}</strong></td>
+      <td>${esc(c.email)}</td>
+      <td>${esc(c.phone || '—')}</td>
+      <td style="max-width:300px">${esc(c.message)}</td>
+      <td><span class="status status--${c.read ? 'read' : 'unread'}">${c.read ? 'Прочитано' : 'Нове'}</span></td>
+      <td>${fmtDate(c.created_at)}</td>
+      <td>
+        ${!c.read ? `<button class="admin-btn admin-btn--ghost admin-btn--sm" onclick="markRead('${c.id}')">Прочитано</button>` : ''}
+        <button class="admin-btn admin-btn--danger admin-btn--sm" onclick="deleteContactAdmin('${c.id}')">Видалити</button>
+      </td>
+    </tr>`).join('');
+  } catch (err) {
+    console.error(err);
   }
-  tbody.innerHTML = contacts.map(c => `<tr style="${!c.read ? 'background:rgba(231,76,60,0.03)' : ''}">
-    <td><strong>${esc(c.name)}</strong></td>
-    <td>${esc(c.email)}</td>
-    <td>${esc(c.phone || '—')}</td>
-    <td style="max-width:300px">${esc(c.message)}</td>
-    <td><span class="status status--${c.read ? 'read' : 'unread'}">${c.read ? 'Прочитано' : 'Нове'}</span></td>
-    <td>${fmtDate(c.created_at)}</td>
-    <td>
-      ${!c.read ? `<button class="admin-btn admin-btn--ghost admin-btn--sm" onclick="markRead('${c.id}')">Прочитано</button>` : ''}
-      <button class="admin-btn admin-btn--danger admin-btn--sm" onclick="deleteContactAdmin('${c.id}')">Видалити</button>
-    </td>
-  </tr>`).join('');
 }
 
 // ===== PRODUCT MODAL =====
@@ -134,11 +153,11 @@ function closeProductModal() {
 }
 
 function editProduct(id) {
-  const p = KagmaDB.getProduct(id);
+  const p = allProductsCache.find(x => x.id === id);
   if (p) openProductModal(p);
 }
 
-function saveProduct(e) {
+async function saveProduct(e) {
   e.preventDefault();
   const id = document.getElementById('pf_id').value;
   const data = {
@@ -156,52 +175,75 @@ function saveProduct(e) {
     image: document.getElementById('pf_image').value.trim()
   };
 
-  if (id) {
-    KagmaDB.updateProduct(id, data);
-  } else {
-    data.sort = KagmaDB.getProducts().length;
-    KagmaDB.addProduct(data);
+  try {
+    if (id) {
+      await KagmaDB.updateProduct(id, data);
+    } else {
+      await KagmaDB.addProduct(data);
+    }
+    closeProductModal();
+    await renderProducts();
+    await renderDashboard();
+  } catch(err) {
+    alert('Помилка збереження');
+    console.error(err);
   }
-
-  closeProductModal();
-  renderProducts();
-  renderDashboard();
 }
 
-function deleteProduct(id) {
+async function deleteProduct(id) {
   if (confirm('Видалити цей продукт?')) {
-    KagmaDB.deleteProduct(id);
-    renderProducts();
-    renderDashboard();
+    try {
+      await KagmaDB.deleteProduct(id);
+      await renderProducts();
+      await renderDashboard();
+    } catch(err) {
+      console.error(err);
+    }
   }
 }
 
 // ===== ORDER ACTIONS =====
-function changeOrderStatus(id, status) {
-  KagmaDB.updateOrderStatus(id, status);
-  renderDashboard();
+async function changeOrderStatus(id, status) {
+  try {
+    await KagmaDB.updateOrderStatus(id, status);
+    await renderDashboard();
+  } catch(err) {
+    console.error(err);
+  }
 }
 
-function deleteOrderAdmin(id) {
+async function deleteOrderAdmin(id) {
   if (confirm('Видалити це замовлення?')) {
-    KagmaDB.deleteOrder(id);
-    renderOrders();
-    renderDashboard();
+    try {
+      await KagmaDB.deleteOrder(id);
+      await renderOrders();
+      await renderDashboard();
+    } catch(err) {
+      console.error(err);
+    }
   }
 }
 
 // ===== CONTACT ACTIONS =====
-function markRead(id) {
-  KagmaDB.markContactRead(id);
-  renderContacts();
-  renderDashboard();
+async function markRead(id) {
+  try {
+    await KagmaDB.markContactRead(id);
+    await renderContacts();
+    await renderDashboard();
+  } catch(err) {
+    console.error(err);
+  }
 }
 
-function deleteContactAdmin(id) {
+async function deleteContactAdmin(id) {
   if (confirm('Видалити це звернення?')) {
-    KagmaDB.deleteContact(id);
-    renderContacts();
-    renderDashboard();
+    try {
+      await KagmaDB.deleteContact(id);
+      await renderContacts();
+      await renderDashboard();
+    } catch(err) {
+      console.error(err);
+    }
   }
 }
 
